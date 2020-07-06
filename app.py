@@ -1,12 +1,35 @@
 import joblib
-from flask import Flask, render_template
+from flask import Flask, request, render_template
 app = Flask(__name__)
 
 
-@app.route('/')
+@app.route('/', methods=['GET'])
 def hello_world():
-    model1 = joblib.load('lin_regr.pkl')
-    pred1 = model1.predict([[4, 2.5, 3005, 15, 17903.0, 1]])[0][0].round(1)
-    model2 = joblib.load('decision_tree.pkl')
-    pred2 = model2.predict([[4, 2.5, 3005, 15, 17903.0, 1]])[0].round(1)
-    return render_template('index.html', preds=(pred1, pred2))
+    return render_template('index.html')
+
+
+@app.route('/', methods=['POST'])
+def predict():
+    features = ['BEDS', 'BATHS', 'SQFT', 'AGE', 'LOTSIZE', 'GARAGE']
+    feature_values = []
+    stats = joblib.load('stats.pkl')
+    for i, f in enumerate(features):
+        feature_value = float(request.form[f])
+        feature_value = (feature_value - stats[f'{f}_mean']) / stats[f'{f}_std']
+        feature_value = (feature_value - stats[f'{f}_min']) / (stats[f'{f}_max'] - stats[f'{f}_min'])
+        feature_values.append(feature_value)
+
+    pred = 0
+    if 'b1' in request.form:
+        model = joblib.load('single_tree.pkl')
+        pred = model.predict([feature_values])[0].round(1)
+    elif 'b2' in request.form:
+        model = joblib.load('ensembled_tree.pkl')
+        pred = model.predict([feature_values])[0].round(1)
+    else:
+        model = joblib.load('lin_regr.pkl')
+        pred = model.predict([feature_values])[0][0].round(1)
+
+    pred = pred * (stats['SOLDPRICE_max'] - stats['SOLDPRICE_min']) + stats['SOLDPRICE_min']
+    pred = pred * stats['SOLDPRICE_std'] + stats['SOLDPRICE_mean']
+    return render_template('index.html', preds=pred)
